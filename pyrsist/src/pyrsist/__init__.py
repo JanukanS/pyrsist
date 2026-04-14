@@ -1,62 +1,59 @@
 import click
 import ast
 from pathlib import Path
+from dataclasses  import dataclass
 
 BEGIN_COMMENT: str = "# PERSIST"
 END_COMMENT: str = "# END PERSIST"
 
-class ScriptAnalysis:
-    def __init__(self, src: str):
-        self.src: str = src
-        self.begin_persist, self.end_persist = self.locate_persist(self.src)
-        
-        self.init_state = self.identify_persist(self.src, self.begin_persist, self.end_persist) 
-        self.init_ast = self.get_init_ast(self.src, self.begin_persist, self.end_persist) 
-  
-        self.persist_vars = list(self.init_state.keys())
-
+@dataclass
+class PersistRead:
+    src: str
+    begin_index: int
+    end_index: int
+    persist_src: str
+    persist_state: dict
+    init_ast: ast.Module
 
     @classmethod
-    def locate_persist(cls, src: str):
-        """ 
-        Find sections of code to persist from:
-        """
+    def from_src(cls, src):
         src_lines = src.split("\n")
-        begin_persist: list[int] = []
-        end_persist: list[int] = []
-        
         for line_ind, line in enumerate(src_lines):
             if line.startswith(BEGIN_COMMENT):
-                begin_persist.append(line_ind+1)
+                begin_persist = line_ind 
             elif line.startswith(END_COMMENT):
-                end_persist.append(line_ind+1)
-        return begin_persist[0], end_persist[0]
+                end_persist = line_ind 
+
+        persist_src = "\n".join(src_lines[begin_persist: end_persist+1])
+        init_state = {}
+        exec(persist_src,init_state)
+        persist_state = {k:v for k,v in init_state.items() if not k.startswith("_")}
+        init_ast = ast.parse(persist_src)
+        return cls(src, begin_persist, end_persist, persist_src, persist_state,init_ast)
+
+
+@dataclass
+class PersistExecute:
+    src: str
+    final_state: dict
+    persist_state: dict
+    final_ast: ast.Module
 
     @classmethod
-    def get_init_ast(cls, src:str, line_begin:int, line_end: int):
-        src_lines = src.split("\n")
-        persist_lines = src_lines[line_begin-1:line_end-1]
-        persist_src = "\n".join(persist_lines)
-        return ast.parse(persist_src)
-        
+    def from_persist_read(cls, pr: PersistRead):
+        fstate = {}
+        exec(pr.src, fstate)
+        pstate = {k: fstate[k] for k in pr.persist_state}
+
+        value_ast = {k: cls.gen_ast(v) for k,v in pstate.items()} 
+        final_ast = PersistTransformer(value_ast).visit(pr.init_ast)
+        ast.fix_missing_locations(final_ast)
+        return cls(pr.src, fstate, pstate, final_ast)
 
     @classmethod
-    def identify_persist(cls, src:str, line_begin: int, line_end: int):
-        src_lines = src.split("\n")
-        persist_lines = src_lines[line_begin-1:line_end-1]
-        persist_src = "\n".join(persist_lines)
-        persist_dict = {}
+    def gen_ast(cls, val):
+        return ast.parse(val.__repr__()).body[0].value
 
-        exec(persist_src, persist_dict)
-        persist_var_dict = {k:v for k,v in persist_dict.items() if not k.startswith("_")}
-        return persist_var_dict
-
-class ScriptExecute:
-    def __init__(self, src_analysis: ScriptAnalysis):
-        self.final_state = {}
-        exec(src_analysis.src, self.final_state)
-        
-        self.persist_state = {var_name: self.final_state[var_name] for var_name in src_analysis.persist_vars}
 
 class PersistTransformer(ast.NodeTransformer):
     def __init__(self, value_ast):
@@ -77,36 +74,17 @@ class PersistTransformer(ast.NodeTransformer):
 
 
 class ScriptPersist:
-    def __init__(self, src_analysis: ScriptAnalysis, src_execute: ScriptExecute):
+    def __init__(self, src_analysis: PersistRead, src_execute: PersistExecute):
         self.analysis = src_analysis
-
-        value_ast = {}
-        for key in src_analysis.persist_vars:
-            val = src_execute.persist_state[key]
-            value_ast[key] = ast.parse(val.__repr__()).body[0].value
-        
-        self.update_ast = PersistTransformer(value_ast).visit(src_analysis.init_ast)
-        ast.fix_missing_locations(self.update_ast)
-        self.update_persist_src = ast.unparse(self.update_ast)
-
+        self.update_persist_src = (BEGIN_COMMENT
+                                   + "\n"
+                                   + ast.unparse(src_execute.final_ast)
+                                   + "\n"
+                                   + END_COMMENT)
+    
     def generate_new_src(self) -> str:
         init_src = self.analysis.src
-        begin_index = self.analysis.begin_persist - 1
-        end_index = self.analysis.end_persist - 1
-        
-        init_src_lines = init_src.split("\n")
-        pre_persist_src = init_src_lines[:begin_index]
-        post_persist_src = init_src_lines[end_index+1:]
-        
-        new_src_lines = (pre_persist_src + 
-                         [BEGIN_COMMENT] + 
-                         self.update_persist_src.split("\n") +  
-                         [END_COMMENT] + 
-                         post_persist_src)
-
- 
-        new_src = "\n".join(new_src_lines)
-        return new_src
+        return init_src.replace(self.analysis.persist_src, self.update_persist_src)
 
 
 @click.group
@@ -125,8 +103,8 @@ def pyrsist_run(target,output_path,dryrun):
     target_path = Path(target)
     target_src = target_path.read_text()
 
-    sa = ScriptAnalysis(target_src)
-    se = ScriptExecute(sa)
+    sa = PersistRead.from_src(target_src)
+    se = PersistExecute.from_persist_read(sa)
     sp = ScriptPersist(sa,se)
     new_src = sp.generate_new_src()
    
@@ -142,7 +120,7 @@ def pyrsist_info(target):
     target_path = Path(target)
     target_src = target_path.read_text()
 
-    sa = ScriptAnalysis(target_src)
+    sa = PersistRead.from_src(target_src)
     click.echo("Persisting Variables: " + sa.persist_vars.__repr__())
 
 @pyrsist.command('init')
