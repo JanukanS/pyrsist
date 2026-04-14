@@ -145,5 +145,18 @@ def pyrsist_info(target):
     sa = ScriptAnalysis(target_src)
     click.echo("Persisting Variables: " + sa.persist_vars.__repr__())
 
+@pyrsist.command('init')
+@click.argument('target')
+def pyrsist_init(target):
+    """Create a template copy called TARGET"""
+    template_prog = "\n".join([BEGIN_COMMENT,
+                               'a=1',
+                               END_COMMENT,
+                               'print("a=",a)',
+                               'a+=1'])
+                    
+    with open(target,'w') as f:
+        f.write(template_prog)
+
 if __name__ == "__main__":
     pyrsist()
