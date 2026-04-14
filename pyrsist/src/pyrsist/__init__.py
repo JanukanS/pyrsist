@@ -64,16 +64,17 @@ class PersistTransformer(ast.NodeTransformer):
         self.value_ast = value_ast
         self.persist_vars = list(value_ast.keys())
 
-    def general_transform(self, node):
+    def visit_Assign(self,node):
+        assign_targets = node.targets[0]
+        if assign_targets.id in self.persist_vars:
+            node.value = self.value_ast[assign_targets.id] 
+        return node
+
+    def visit_AnnAssign(self,node):
         if node.target.id in self.persist_vars:
             node.value = self.value_ast[node.target.id] 
         return node
 
-    def visit_Assign(self,node):
-        return self.general_transform(node)
-
-    def visit_AnnAssign(self,node):
-        return self.general_transform(node)
 
 class ScriptPersist:
     def __init__(self, src_analysis: ScriptAnalysis, src_execute: ScriptExecute):
