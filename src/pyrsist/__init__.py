@@ -2,6 +2,7 @@ import click
 import ast
 from pathlib import Path
 from dataclasses  import dataclass
+from functools import singledispatchmethod
 
 BEGIN_COMMENT: str = "# PERSIST"
 END_COMMENT: str = "# END PERSIST"
@@ -24,10 +25,15 @@ class PersistRead:
             elif line.startswith(END_COMMENT):
                 end_persist = line_ind 
 
+        init_src = "\n".join(src_lines[:begin_persist])
         persist_src = "\n".join(src_lines[begin_persist: end_persist+1])
+        
         init_state = {}
-        exec(persist_src,init_state)
-        persist_state = {k:v for k,v in init_state.items() if not k.startswith("_")}
+        exec(init_src, init_state)
+        persist_state = init_state.copy()
+        exec(persist_src,persist_state)
+        var_state = {k: persist_state[k] for k in persist_state.keys() - init_state.keys()}
+        persist_state = {k:v for k,v in var_state.items() if not k.startswith("_")}
         init_ast = ast.parse(persist_src)
         return cls(src, begin_persist, end_persist, persist_src, persist_state,init_ast)
 
@@ -51,6 +57,18 @@ class PersistExecute:
         return cls(pr.src, fstate, pstate, final_ast)
 
     @classmethod
+    def from_globals(cls, pr: PersistRead):
+        fstate = globals()
+        pstate = {k: fstate[k] for k in pr.persist_state}
+
+        value_ast = {k: cls.gen_ast(v) for k,v in pstate.items()} 
+        final_ast = PersistTransformer(value_ast).visit(pr.init_ast)
+        ast.fix_missing_locations(final_ast)
+        return cls(pr.src, fstate, pstate, final_ast)
+
+
+
+    @classmethod
     def gen_ast(cls, val):
         return ast.parse(val.__repr__()).body[0].value
 
@@ -62,15 +80,32 @@ class PersistTransformer(ast.NodeTransformer):
         self.persist_vars = list(value_ast.keys())
 
     def visit_Assign(self,node):
-        assign_targets = node.targets[0]
-        if assign_targets.id in self.persist_vars:
-            node.value = self.value_ast[assign_targets.id] 
+        node.value = self._parse_expression(node.targets[0])# self.value_ast[assign_targets.id]  
         return node
 
     def visit_AnnAssign(self,node):
         if node.target.id in self.persist_vars:
             node.value = self.value_ast[node.target.id] 
         return node
+
+    @singledispatchmethod
+    def _parse_expression(self,asgn_target):
+        pass
+
+    @_parse_expression.register(ast.Tuple)
+    def _(self,asgn_target: ast.Tuple):
+        tuple_vals = []
+        for var_name in asgn_target.elts:
+            if var_name.id in self.persist_vars:
+                tuple_vals.append(self.value_ast[var_name.id])
+        return ast.Tuple(tuple_vals, ast.Load)
+
+    @_parse_expression.register(ast.Name)
+    def _(self,asgn_target: ast.Name):
+        if asgn_target.id in self.persist_vars:
+            return self.value_ast[asgn_target.id]
+
+
 
 
 class ScriptPersist:
@@ -85,6 +120,21 @@ class ScriptPersist:
     def generate_new_src(self) -> str:
         init_src = self.analysis.src
         return init_src.replace(self.analysis.persist_src, self.update_persist_src)
+    
+    @classmethod
+    def run_after_execution(cls, fname):
+        target_path = Path(fname)
+        target_src = target_path.read_text()
+
+        sa = PersistRead.from_src(target_src)
+        se = PersistExecute.from_globals(sa)
+        sp = ScriptPersist(sa,se)
+        new_src = sp.generate_new_src()
+   
+        with open(target_path,'w+') as f:
+            f.write(new_src)
+
+
 
 
 @click.group
