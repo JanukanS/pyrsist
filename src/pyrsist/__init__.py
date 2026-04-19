@@ -57,14 +57,13 @@ class PersistExecute:
         return cls(pr.src, fstate, pstate, final_ast)
 
     @classmethod
-    def from_globals(cls, pr: PersistRead):
-        fstate = globals()
-        pstate = {k: fstate[k] for k in pr.persist_state}
+    def from_globals(cls, pr: PersistRead, gl):
+        pstate = {k: gl[k] for k in pr.persist_state}
 
         value_ast = {k: cls.gen_ast(v) for k,v in pstate.items()} 
         final_ast = PersistTransformer(value_ast).visit(pr.init_ast)
         ast.fix_missing_locations(final_ast)
-        return cls(pr.src, fstate, pstate, final_ast)
+        return cls(pr.src, gl, pstate, final_ast)
 
 
 
@@ -122,12 +121,12 @@ class ScriptPersist:
         return init_src.replace(self.analysis.persist_src, self.update_persist_src)
     
     @classmethod
-    def run_after_execution(cls, fname):
+    def run_after_execution(cls, fname,global_dict):
         target_path = Path(fname)
         target_src = target_path.read_text()
 
         sa = PersistRead.from_src(target_src)
-        se = PersistExecute.from_globals(sa)
+        se = PersistExecute.from_globals(sa,global_dict)
         sp = ScriptPersist(sa,se)
         new_src = sp.generate_new_src()
    
