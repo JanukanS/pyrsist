@@ -3,6 +3,10 @@
 ```bash
 uv tool install git+https://github.com/JanukanS/pyrsist
 ```
+## Uninstallation
+```
+uv tool uninstall pyrsist
+```
 ## Get Started
 Create a counter script
 ```bash
