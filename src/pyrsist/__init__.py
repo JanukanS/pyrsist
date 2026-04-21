@@ -1,5 +1,6 @@
 import click
 import ast
+import inspect
 from pathlib import Path
 from dataclasses  import dataclass
 from functools import singledispatchmethod
@@ -135,6 +136,11 @@ class ScriptPersist:
 
 
 
+def persist():
+    frame = inspect.currentframe().f_back
+    globdict = frame.f_globals
+    fname = frame.f_globals["__file__"]
+    ScriptPersist.run_after_execution(fname, globdict)
 
 @click.group
 def pyrsist():
