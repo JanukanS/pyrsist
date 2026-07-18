@@ -16,10 +16,6 @@ Get information about the counter script
 ```bash
 uvx pyrsist info counter.py
 ```
-Execute the counter script
-```bash
-uvx pyrsist run counter.py
-```
 
 ## Using as a Library
 Add as a dependency

@@ -4,6 +4,7 @@ import inspect
 from pathlib import Path
 from dataclasses  import dataclass
 from functools import singledispatchmethod
+from typing import Self
 
 BEGIN_COMMENT: str = "# PERSIST"
 END_COMMENT: str = "# END PERSIST"
@@ -21,7 +22,7 @@ class PersistRead:
     init_ast: ast.Module # ast of src
 
     @classmethod
-    def from_src(cls, src: str) -> PersistRead:
+    def from_src(cls, src: str) -> Self:
         """
         construct a PersistRead object given python source code
         """
@@ -153,28 +154,6 @@ def persist():
 @click.group
 def pyrsist():
     pass
-
-@pyrsist.command('run')
-@click.argument('target')
-@click.argument('output_path', nargs=1, default=None)
-@click.option('--dryrun', is_flag=True, help="Do not modify script")
-def pyrsist_run(target,output_path,dryrun):
-    """Execute TARGET and rewrite TARGET if OUTPUT_PATH is not specified"""
-    if dryrun and output_path is not None:
-        raise click.UsageError("Cannot specify an output file with dryrun enabled")
-    
-    target_path = Path(target)
-    target_src = target_path.read_text()
-
-    sa = PersistRead.from_src(target_src)
-    se = PersistExecute.from_persist_read(sa)
-    sp = ScriptPersist(sa,se)
-    new_src = sp.generate_new_src()
-   
-    output_file = output_path or target_path
-    if not dryrun:
-        with open(output_file,'w+') as f:
-            f.write(new_src)
 
 @pyrsist.command('info')
 @click.argument('target')
