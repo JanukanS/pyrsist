@@ -163,7 +163,7 @@ def pyrsist_info(target):
     target_src = target_path.read_text()
 
     sa = PersistRead.from_src(target_src)
-    click.echo("Persisting Variables: " + list(sa.persist_dict.keys()))
+    click.echo("Persisting Variables: " + list(sa.persist_src.keys()))
 
 @pyrsist.command('init')
 @click.argument('target')
