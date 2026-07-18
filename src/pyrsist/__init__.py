@@ -10,15 +10,21 @@ END_COMMENT: str = "# END PERSIST"
 
 @dataclass
 class PersistRead:
-    src: str
-    begin_index: int
-    end_index: int
-    persist_src: str
-    persist_state: dict
-    init_ast: ast.Module
+    """
+    Data about persistence section within a script
+    """
+    src: str # Entire script source code
+    begin_index: int  # index of line where persistence section beings
+    end_index: int # index of line where persistence section ends
+    persist_src: str # source code within persistence section
+    persist_state: dict # Initial value of persisted variables
+    init_ast: ast.Module # ast of src
 
     @classmethod
-    def from_src(cls, src):
+    def from_src(cls, src: str) -> PersistRead:
+        """
+        construct a PersistRead object given python source code
+        """
         src_lines = src.split("\n")
         for line_ind, line in enumerate(src_lines):
             if line.startswith(BEGIN_COMMENT):
@@ -138,6 +144,8 @@ class ScriptPersist:
 
 def persist():
     frame = inspect.currentframe().f_back
+    if frame.f_back is not None:
+        raise RuntimeError("This function must be called from the top-level frame (module level).")
     globdict = frame.f_globals
     fname = frame.f_globals["__file__"]
     ScriptPersist.run_after_execution(fname, globdict)
@@ -176,7 +184,7 @@ def pyrsist_info(target):
     target_src = target_path.read_text()
 
     sa = PersistRead.from_src(target_src)
-    click.echo("Persisting Variables: " + sa.persist_vars.__repr__())
+    click.echo("Persisting Variables: " + list(sa.persist_dict.keys()))
 
 @pyrsist.command('init')
 @click.argument('target')
