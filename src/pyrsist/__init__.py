@@ -54,29 +54,18 @@ class PersistExecute:
     final_ast: ast.Module
 
     @classmethod
-    def from_persist_read(cls, pr: PersistRead):
-        fstate = {}
-        exec(pr.src, fstate)
-        pstate = {k: fstate[k] for k in pr.persist_state}
-
-        value_ast = {k: cls.gen_ast(v) for k,v in pstate.items()} 
-        final_ast = PersistTransformer(value_ast).visit(pr.init_ast)
-        ast.fix_missing_locations(final_ast)
-        return cls(pr.src, fstate, pstate, final_ast)
-
-    @classmethod
     def from_globals(cls, pr: PersistRead, gl):
         pstate = {k: gl[k] for k in pr.persist_state}
 
-        value_ast = {k: cls.gen_ast(v) for k,v in pstate.items()} 
+        value_ast = {k: cls._gen_ast(v) for k,v in pstate.items()} 
         final_ast = PersistTransformer(value_ast).visit(pr.init_ast)
         ast.fix_missing_locations(final_ast)
         return cls(pr.src, gl, pstate, final_ast)
 
 
 
-    @classmethod
-    def gen_ast(cls, val):
+    @staticmethod
+    def _gen_ast(val):
         return ast.parse(val.__repr__()).body[0].value
 
 

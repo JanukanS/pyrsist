@@ -9,7 +9,9 @@ class TestIdentifyVariables(unittest.TestCase):
 
     def _test_src(self, test_src):
         sa = pyrsist.PersistRead.from_src(test_src)
-        se = pyrsist.PersistExecute.from_persist_read(sa)
+        script_globals = {}
+        exec(test_src, script_globals)
+        se = pyrsist.PersistExecute.from_globals(sa, script_globals)
         pyrsist.ScriptPersist(sa,se).generate_new_src()
 
     def test_assign(self):
