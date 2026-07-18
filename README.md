@@ -20,3 +20,10 @@ Execute the counter script
 ```bash
 uvx pyrsist run counter.py
 ```
+
+## Using as a Library
+Add as a dependency
+```bash
+uv add git+github.com/JanukanS/pyrsist
+```
+Call the persist function at the end of the script
